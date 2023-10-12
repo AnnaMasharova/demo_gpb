@@ -1,0 +1,62 @@
+version: '3.7'
+
+secrets:
+  postgres_user:
+    file: ./secrets/postgres_user.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+
+services:
+  nginx:
+    restart: always
+    build: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./web/static:/static
+    links:
+      - web:web
+
+  web:
+    restart: always
+    build: ./web
+    links:
+      - postgres:postgres
+    secrets:
+      - postgres_user
+      - postgres_password
+    environment:
+      # DEBUG: False
+      POSTGRES_DB: accounts
+      DATABASE_PORT: 5432
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    expose:
+      - "8000"
+    depends_on:
+      - postgres
+    command: >
+      sh -c "gunicorn -w 2 -b :8000 app:app"
+
+  postgres:
+    restart: always
+    image: postgres:15
+    secrets:
+      - postgres_user
+      - postgres_password
+    logging:
+      options:
+        max-size: 128m
+        max-file: "3"
+    environment:
+      POSTGRES_DB: accounts
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    ports:
+      - '5433:5432'
+    volumes: 
+      - ./postgres-data:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./init/demo_schema_creation_script.sql:/docker-entrypoint-initdb.d/demo_schema_creation_script.sql
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
